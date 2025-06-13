@@ -113,13 +113,57 @@ namespace Test.API.Controllers
         // POST: api/Records
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
-        public async Task<ActionResult<Record>> PostRecord(Record @record)
+        public async Task<IActionResult> PostRecord([FromBody] CreateRecordDto dto)
         {
-            _context.Record.Add(@record);
+            var languageExists = await _context.Language.AnyAsync(l => l.Id == dto.LanguageId);
+            var studentExists = await _context.Student.AnyAsync(s => s.Id == dto.StudentId);
+
+            if (!languageExists || !studentExists)
+                return NotFound("Language or student not found");
+
+            int taskId;
+            
+            if (dto.TaskId.HasValue)
+            {
+                var taskExists = await _context.Task.AnyAsync(t => t.Id == dto.TaskId.Value);
+                if (!taskExists)
+                {
+                    return BadRequest("Provided taskId does not exist");
+                }
+                taskId = dto.TaskId.Value;
+            }
+            
+            else if (dto.Task != null && !string.IsNullOrWhiteSpace(dto.Task.Name) && !string.IsNullOrWhiteSpace(dto.Task.Description))
+            {
+                var newTask = new Models.Task
+                {
+                    Name = dto.Task.Name,
+                    Description = dto.Task.Description
+                };
+                _context.Task.Add(newTask);
+                await _context.SaveChangesAsync();
+                taskId = newTask.Id;
+            }
+            else
+            {
+                return BadRequest("Either a valid taskId or a task object must be provided");
+            }
+
+            var record = new Record
+            {
+                LanguageId = dto.LanguageId,
+                StudentId = dto.StudentId,
+                TaskId = taskId,
+                ExecutionTime = (long)dto.ExecutionTime,
+                CreatedAt = dto.Created
+            };
+
+            _context.Record.Add(record);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetRecord", new { id = @record.Id }, @record);
+            return CreatedAtAction(nameof(PostRecord), new { id = record.Id }, record);
         }
+
 
         // DELETE: api/Records/5
         [HttpDelete("{id}")]
